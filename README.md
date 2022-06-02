@@ -6,7 +6,7 @@ A cli to browse and watch movies.
 This project is a work in progress.
 However, you can try it out
 
-Register on [OpenSubtitles](https://www.opensubtitles.com), and create your [API consumer](https://www.opensubtitles.com/en/consumers). Then, export your API KEY with `.zshrc`, `.bashrc`, etc.
+Register on [OpenSubtitles](https://www.opensubtitles.com), and create your [API consumer](https://www.opensubtitles.com/en/consumers). Then, export your `API KEY` with `.zshrc`, `.bashrc`, etc.
 
 Append following to you `.zshrc`, `.bashrc`, etc.:
 ```
@@ -16,7 +16,7 @@ export OPENSUBTITLES_API_KEY=<your_api_key>
 Then clone and have fun:
 
 ```bash
-git clone https://github.com/mov-cli/mov-cli
+git clone https://github.com/hllvc/mov-cli
 cd mov-cli
 ./mov-cli
 ```
