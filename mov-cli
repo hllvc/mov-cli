@@ -57,7 +57,7 @@ _input() {
 
 _stream () {
   sub_data=$(curl -fSsL --request GET \
-    --url "https://api.opensubtitles.com/api/v1/subtitles?query=$(echo ${2} | tr ' ' '+')&page=1&languages=en" \
+    --url "https://api.opensubtitles.com/api/v1/subtitles?query=$(echo ${2} | tr ' ' '+')&page=1&languages=en$([[ ! -z $ep_no && ! -z $season_choice ]] && echo "&season_number=$season_choice&episode_number=$ep_no")" \
     --header "Api-Key: $OPENSUBTITLES_API_KEY" \
     --header "Content-Type: application/json" | jq -r '.data')
   sub_choice=$(echo $sub_data | jq -r '.[].attributes.feature_details.movie_name' | fzf)
