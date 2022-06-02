@@ -56,10 +56,27 @@ _input() {
 }
 
 _stream () {
-  case $player_fn in
-    mpv)
-      mpv $1 --title="$2" --save-position-on-quit -fs
-  esac
+  sub_data=$(curl -fSsL --request GET \
+    --url "https://api.opensubtitles.com/api/v1/subtitles?query=$(echo ${2} | tr ' ' '+')&page=1&languages=en" \
+    --header "Api-Key: $OPENSUBTITLES_API_KEY" \
+    --header "Content-Type: application/json" | jq -r '.data')
+  sub_choice=$(echo $sub_data | jq -r '.[].attributes.feature_details.movie_name' | fzf)
+  sub_files=$(echo $sub_data | jq -r --arg sub_choice "$sub_choice" '.[] | select(.attributes.feature_details.movie_name == $sub_choice)' | jq '.attributes.files[].file_id')
+  mkdir "${2}_subs"; cd "${2}_subs"
+  counter=0
+  subs_count=3
+  while read line; do
+    [[ $counter == $subs_count ]] && break
+    curl -fSsL --request POST \
+      --url https://api.opensubtitles.com/api/v1/download \
+      --header "Api-Key: $OPENSUBTITLES_API_KEY" \
+      --header 'Content-Type: application/json' \
+      --data "{
+      \"file_id\": $line}" | jq -r '.link' | xargs wget -q --show-progress -O sub_$counter.srt
+    counter=$(( $counter+1 ))
+  done < <(echo -e $sub_files | tr ' ' '\n')
+  mpv $1 --title="$2" --save-position-on-quit -fs --sub-files=sub_0.srt:sub_1.srt:sub_2.srt --sub-font-size=40
+  cd ..; rm -rf "${2}_subs"
 }
 
 _download () {
