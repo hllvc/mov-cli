@@ -55,16 +55,17 @@ _input() {
   unset x
 }
 
-_stream () {
+_get_subtitles () {
+  printf "\n${c_blue}Fetching subtitles.."
   sub_data=$(curl -fSsL --request GET \
-    --url "https://api.opensubtitles.com/api/v1/subtitles?query=$(echo ${2} | tr ' ' '+')&page=1&languages=en$([[ ! -z $ep_no && ! -z $season_choice ]] && echo "&season_number=$season_choice&episode_number=$ep_no")" \
+    --url "https://api.opensubtitles.com/api/v1/subtitles?query=$(echo ${1} | tr ' ' '+')&page=1&languages=en$([[ ! -z $ep_no && ! -z $season_choice ]] && echo "&season_number=$season_choice&episode_number=$ep_no")" \
     --header "Api-Key: $OPENSUBTITLES_API_KEY" \
     --header "Content-Type: application/json" | jq -r '.data')
-  sub_choice=$(echo $sub_data | jq -r '.[].attributes.feature_details.movie_name' | fzf)
+  sub_choice=$(echo $sub_data | jq -r '.[0].attributes.feature_details.movie_name')
   sub_files=$(echo $sub_data | jq -r --arg sub_choice "$sub_choice" '.[] | select(.attributes.feature_details.movie_name == $sub_choice)' | jq '.attributes.files[].file_id')
-  mkdir "${2}_subs"; cd "${2}_subs"
+  mkdir "${2}"
   counter=0
-  subs_count=3
+  subs_count=10
   while read line; do
     [[ $counter == $subs_count ]] && break
     curl -fSsL --request POST \
@@ -72,16 +73,83 @@ _stream () {
       --header "Api-Key: $OPENSUBTITLES_API_KEY" \
       --header 'Content-Type: application/json' \
       --data "{
-      \"file_id\": $line}" | jq -r '.link' | xargs wget -q --show-progress -O sub_$counter.srt
+      \"file_id\": $line}" | jq -r '.link' | xargs wget -q --show-progress -O "${2}/sub_$counter.srt"
     counter=$(( $counter+1 ))
   done < <(echo -e $sub_files | tr ' ' '\n')
-  mpv $1 --title="$2" --save-position-on-quit -fs --sub-files=sub_0.srt:sub_1.srt:sub_2.srt --sub-font-size=40
-  cd ..; rm -rf "${2}_subs"
+  printf "${c_green}Subtitles downloaded!\n${c_reset}"
+}
+
+_stream () {
+  _get_subtitles "${2}" "${2}_subs"
+  mpv $1 --title="$2" -fs --sub-auto=all --sub-file-paths="$(pwd)/${2}_subs" --sub-font-size=40
+  rm -r "${2}_subs"
 }
 
 _download () {
-  printf "${c_blue}Downloading %s${c_reset}\n" "$2"
-  aria2c --summary-interval=0 -x 16 -s 16 --referer="$base_url" "$1" --dir=$download_dir -o "${2}.mp4" --download-result=hide
+  printf "${c_blue}Downloading %s${c_reset}\n" "${2}"
+  root_dir=( $(echo "${2}") ); root_dir=$(echo "${root_dir[@]::${#root_dir[@]}-2}" | tr ' ' '_')
+  episode_dir="${download_dir}/${root_dir}/${2// /_}"
+  mkdir -p "${episode_dir}"
+  aria2c --summary-interval=0 -x 16 -s 16 --referer="$base_url" "$1" --dir="${episode_dir}/" -o "${2}.mp4" --download-result=hide
+  printf "${c_green}Downloaded %s${c_reset}\n" "$2"
+  _get_subtitles "${2}" "${episode_dir}"
+  cat > "${episode_dir}/play.sh" <<EOF
+  #!/usr/bin/env bash
+  season=$season_choice
+  episode=$ep_no
+  printf "${c_blue}Playing downloaded %s${c_reset}\n" "$2"
+  mpv "${root_dir}_S${season}_E${ep_no}/${2}.mp4" --title="$2" -fs --sub-auto=all --sub-file-paths="${root_dir}_S${season}_E${ep_no}"  --sub-font-size=40
+
+  while :; do
+    printf "\n${c_green}Currently playing %s\n" "${2}"
+    [[ "\$episode" != "$noofeps" ]] && printf "$c_yellow(%s) %s$c_reset\n" "n" "next"
+    [[ "\$episode" != "1" ]] && printf "$c_cyan(%s) %s$c_reset\n" "p" "previous"
+    printf "$c_green(%s) %s$c_reset\n" "c" "change season"
+    printf "$c_blue(%s) %s$c_reset\n" "e" "select episode"
+    printf "$c_red(%s) %s$c_reset\n" "q" "exit"
+    printf "${c_green}Enter choice:$c_reset "
+    read choice
+    case \$choice in
+      n)
+        ep_no=\$((episode + 1))
+        [[ "\$episode" -gt "$noofeps" ]] && _err "Episode out of range";;
+      p)
+        ep_no=\$((episode - 1))
+        [[ "\$episode" -lt "1" ]] && _err "Episode out of range";;
+      e)
+        printf "$c_yellow  Episode??(1-%s):$c_reset " "$noofeps"
+        read -r x
+        while [[ -z "\$x" ]] || [[ ! "\$x" == "\$x" ]] || (( \$x < 1 || \$x > $noofeps )); do
+          _err "Invalid choice"
+          printf "$c_yellow  Episode??(1-%s):$c_reset " "$noofeps"
+          read -r x
+        done
+        ep_no=\$x
+        ;;
+      c)
+        printf "$c_yellow  Season??(1-%s):$c_reset " "$season"
+        read -r x
+        while [[ -z "\$x" ]] || [[ ! "\$x" == "\$x" ]] || (( \$x < 1 || \$x > $season )); do
+          _err "Invalid choice"
+          printf "$c_yellow  Episode??(1-%s):$c_reset " "$season"
+          read -r x
+        done
+        se=\$x
+        ;;
+      q)
+        break;;
+      *)
+        _err "invalid choice";;
+      esac
+      /bin/bash ${root_dir}_S\${se:=\$season}_E\${ep_no:=1}/play.sh
+  done
+EOF
+  chmod +x "${episode_dir}/play.sh"
+  [[ ! -e "${download_dir}/${root_dir}/play.sh" ]] && cat > "${download_dir}/${root_dir}/play.sh" <<EOF
+  #!/usr/bin/env bash
+  /bin/bash "${root_dir}_S1_E1/play.sh"
+EOF
+  [[ -e "${download_dir}/${root_dir}/play.sh" ]] && chmod +x "${download_dir}/${root_dir}/play.sh"
 }
 
 _get_show () {
@@ -136,7 +204,7 @@ _play_link () {
   if [[ -z "$video_link" ]]; then
       printf "\33[2K\r${c_red}Video Url not found${c_reset}\n"
   else
-      printf "\33[2K\r${c_green}Video link fetched${c_reset}\n%s" "$video_link"
+      printf "\33[2K\r${c_green}Video link fetched${c_reset}\n"
       if [[ "$is_download" -eq "0" ]]; then
     _stream "$video_link" "$display"
       else
@@ -150,7 +218,7 @@ base_url="https://theflix.to"
 player_fn="mpv"
 is_show=0
 is_download=0
-download_dir=.
+download_dir=downloads
 
 while getopts 'dhtp:v' OPT; do
   case $OPT in
