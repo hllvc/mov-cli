@@ -65,7 +65,7 @@ _get_subtitles () {
   sub_files=$(echo $sub_data | jq -r --arg sub_choice "$sub_choice" '.[] | select(.attributes.feature_details.movie_name == $sub_choice)' | jq '.attributes.files[].file_id')
   mkdir "${2}"
   counter=0
-  subs_count=10
+  subs_count=${subs_count:-5}
   while read line; do
     [[ $counter == $subs_count ]] && break
     curl -fSsL --request POST \
@@ -220,7 +220,7 @@ is_show=0
 is_download=0
 download_dir=downloads
 
-while getopts 'dhtp:v' OPT; do
+while getopts 'dhtp:s:v' OPT; do
   case $OPT in
     d)
       is_download=1
@@ -231,6 +231,9 @@ while getopts 'dhtp:v' OPT; do
     p)
       is_download=1
       download_dir=$OPTARG
+      ;;
+    s)
+      subs_count=$OPTARG
       ;;
     *|h)
       _help
