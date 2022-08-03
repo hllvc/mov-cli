@@ -65,7 +65,7 @@ _get_subtitles () {
   sub_files=$(echo $sub_data | jq -r --arg sub_choice "$sub_choice" '.[] | select(.attributes.feature_details.movie_name == $sub_choice)' | jq '.attributes.files[].file_id')
   mkdir "${2}"
   counter=0
-  subs_count=${subs_count:-5}
+  subs_count=${subs_count:-2}
   while read line; do
     [[ $counter == $subs_count ]] && break
     curl -fSsL --request POST \
@@ -80,9 +80,10 @@ _get_subtitles () {
 }
 
 _stream () {
-  _get_subtitles "${2}" "${2}_subs"
-  mpv $1 --title="$2" -fs --sub-auto=all --sub-file-paths="$(pwd)/${2}_subs" --sub-font-size=40
-  rm -r "${2}_subs"
+  _get_subtitles "${2}" "subs"
+  # mpv $1 --title="$2" -fs --sub-auto=all --sub-file-paths="$(pwd)/${2}_subs" --sub-font-size=40
+  iina $1 --title="$2" --mpv-sub-auto=all --mpv-sub-file-paths="$(pwd)/subs" --keep-running
+  rm -rf subs
 }
 
 _download () {
